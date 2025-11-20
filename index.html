@@ -1,0 +1,934 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>City Traffic Simulation 2.9 - UI Toggle</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #0f172a;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: white;
+        }
+        canvas {
+            display: block;
+        }
+        .ui-panel {
+            background: rgba(15, 23, 42, 0.95);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+        }
+        input[type=range] {
+            @apply appearance-none bg-slate-700 h-2 rounded-lg;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            @apply appearance-none w-4 h-4 rounded-full bg-cyan-500 cursor-pointer transition-transform hover:scale-110;
+        }
+        .fade-enter {
+            opacity: 0;
+            transform: scale(0.95);
+            pointer-events: none;
+        }
+        .fade-enter-active {
+            opacity: 1;
+            transform: scale(1);
+            pointer-events: auto;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Restore Button (Hidden by default) -->
+    <button id="open-ui-btn" class="absolute top-4 left-4 z-20 p-3 bg-slate-800/90 rounded-xl text-cyan-400 hover:bg-slate-700 hover:text-cyan-300 border border-slate-600/50 transition-all duration-300 shadow-lg opacity-0 pointer-events-none transform scale-90">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+        </svg>
+    </button>
+
+    <!-- UI Overlay -->
+    <div id="controls" class="absolute top-4 left-4 ui-panel p-5 rounded-xl w-72 z-30 transition-all duration-300 transform origin-top-left">
+        <div class="flex justify-between items-center mb-6 border-b border-slate-700 pb-2">
+            <h1 class="text-xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-500 tracking-wider">TRAFFIC OS <span class="text-xs text-slate-500 font-mono">v2.9</span></h1>
+            <div class="flex items-center gap-3">
+                <div class="flex gap-1.5">
+                    <div class="w-2 h-2 rounded-full bg-red-500 animate-pulse"></div>
+                    <div class="w-2 h-2 rounded-full bg-yellow-500 animate-pulse delay-75"></div>
+                    <div class="w-2 h-2 rounded-full bg-green-500 animate-pulse delay-150"></div>
+                </div>
+                <!-- Close/Minimize Button -->
+                <button id="close-ui-btn" class="text-slate-500 hover:text-white transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                    </svg>
+                </button>
+            </div>
+        </div>
+
+        <div class="space-y-5 text-sm text-slate-300">
+            <!-- Stats -->
+            <div class="grid grid-cols-2 gap-3">
+                <div class="bg-slate-800/50 p-2.5 rounded-lg border border-slate-700/50">
+                    <span class="block text-[10px] uppercase tracking-widest text-slate-500 mb-1">Vehicles</span>
+                    <span class="text-xl font-mono text-cyan-300" id="car-count">0</span>
+                </div>
+                <div class="bg-slate-800/50 p-2.5 rounded-lg border border-slate-700/50">
+                    <span class="block text-[10px] uppercase tracking-widest text-slate-500 mb-1">Drones Active</span>
+                    <span class="text-xl font-mono text-orange-400" id="drone-count">0</span>
+                </div>
+            </div>
+
+            <!-- Controls -->
+            <div class="space-y-1">
+                <label class="flex justify-between text-xs font-medium text-slate-400 uppercase tracking-wider">
+                    <span>Time Scale</span>
+                    <span id="speed-val" class="text-cyan-400">1.0x</span>
+                </label>
+                <input type="range" min="0.1" max="3" step="0.1" value="1" id="sim-speed" class="w-full">
+            </div>
+
+            <div class="space-y-1">
+                <label class="flex justify-between text-xs font-medium text-slate-400 uppercase tracking-wider">
+                    <span>Density</span>
+                    <span id="spawn-val" class="text-cyan-400">Normal</span>
+                </label>
+                <input type="range" min="10" max="200" step="10" value="60" id="spawn-rate" class="w-full">
+            </div>
+
+            <div class="flex items-center gap-3 pt-2 group cursor-pointer">
+                <div class="relative flex items-center">
+                    <input type="checkbox" id="debug-mode" class="peer h-4 w-4 cursor-pointer appearance-none rounded border border-slate-600 bg-slate-800 checked:border-cyan-500 checked:bg-cyan-500 transition-all">
+                    <svg class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-3 h-3 pointer-events-none opacity-0 peer-checked:opacity-100 text-white" viewBox="0 0 14 14" fill="none">
+                        <path d="M3 8L6 11L11 3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </div>
+                <label for="debug-mode" class="cursor-pointer select-none text-slate-400 group-hover:text-cyan-300 transition-colors">Show Telemetry</label>
+            </div>
+
+            <div class="flex gap-2 pt-2">
+                <button id="reset-btn" class="flex-1 bg-slate-700 hover:bg-cyan-600 text-white py-2 px-4 rounded-lg transition-all text-xs font-bold uppercase tracking-wide shadow-lg hover:shadow-cyan-500/20">
+                    Rebuild
+                </button>
+                <button id="clear-traffic-btn" class="flex-1 bg-red-900/30 hover:bg-red-600 text-red-200 hover:text-white py-2 px-4 rounded-lg transition-all text-xs font-bold uppercase tracking-wide border border-red-900/50">
+                    Clear
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <canvas id="simCanvas"></canvas>
+
+<script>
+/**
+ * CONFIGURATION & CONSTANTS
+ */
+const TILE_SIZE = 100;
+const LANE_COUNT = 2; 
+const LANE_WIDTH = 26;
+const MARKER_WIDTH = 2;
+const ROAD_WIDTH = (LANE_WIDTH * LANE_COUNT * 2) + MARKER_WIDTH; 
+const STOP_LINE_OFFSET = ROAD_WIDTH/2 + 12;
+
+const CAR_WIDTH = 14;
+const CAR_LENGTH = 24;
+const CAR_SAFE_GAP = 15; 
+
+const COLORS = {
+    bg: '#0f172a',
+    road: '#1e293b',
+    roadMarking: '#334155',
+    roadCenter: '#fbbf24', 
+    intersection: '#1e293b',
+    stopLine: '#ef4444',
+    lightBeam: '#475569'
+};
+
+const ACCELERATION = 0.3;
+const BRAKING = 0.6; 
+const MAX_SPEED = 3.5;
+
+// Drone Logic
+const STUCK_THRESHOLD = 480; // Approx 8 seconds at 60fps
+
+/**
+ * UTILITIES
+ */
+class Vector {
+    constructor(x, y) { this.x = x; this.y = y; }
+    add(v) { return new Vector(this.x + v.x, this.y + v.y); }
+    sub(v) { return new Vector(this.x - v.x, this.y - v.y); }
+    mult(n) { return new Vector(this.x * n, this.y * n); }
+    mag() { return Math.sqrt(this.x**2 + this.y**2); }
+    normalize() { const m = this.mag(); return m === 0 ? new Vector(0,0) : new Vector(this.x/m, this.y/m); }
+    dist(v) { return Math.sqrt((this.x-v.x)**2 + (this.y-v.y)**2); }
+    copy() { return new Vector(this.x, this.y); }
+}
+
+function drawRoundedRect(ctx, x, y, width, height, radius) {
+    ctx.beginPath();
+    ctx.moveTo(x + radius, y);
+    ctx.lineTo(x + width - radius, y);
+    ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+    ctx.lineTo(x + width, y + height - radius);
+    ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+    ctx.lineTo(x + radius, y + height);
+    ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+    ctx.lineTo(x, y + radius);
+    ctx.quadraticCurveTo(x, y, x + radius, y);
+    ctx.closePath();
+    ctx.fill();
+}
+
+/**
+ * CLASSES
+ */
+
+class TrafficLight {
+    constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.phase = Math.floor(Math.random() * 4);
+        this.timer = Math.random() * 200;
+        this.greenTime = 400;
+        this.yellowTime = 100;
+    }
+
+    update(dt) {
+        this.timer += dt;
+        let limit = (this.phase % 2 === 0) ? this.greenTime : this.yellowTime;
+        if (this.timer > limit) {
+            this.timer = 0;
+            this.phase = (this.phase + 1) % 4;
+        }
+    }
+
+    getState(dx, dy) {
+        const isVertical = Math.abs(dy) > Math.abs(dx);
+        if (isVertical) {
+            if (this.phase === 0) return 'green';
+            if (this.phase === 1) return 'yellow';
+            return 'red';
+        } else {
+            if (this.phase === 2) return 'green';
+            if (this.phase === 3) return 'yellow';
+            return 'red';
+        }
+    }
+}
+
+class Car {
+    constructor(x, y, dx, dy, laneIndex) {
+        this.pos = new Vector(x, y);
+        this.dir = new Vector(dx, dy);
+        this.speed = 2.5 + Math.random();
+        this.maxSpeed = this.speed;
+        this.id = Math.random().toString(36).substr(2,9);
+        
+        this.laneIndex = laneIndex; 
+        this.targetLaneIndex = laneIndex;
+        this.laneOffset = this.getLaneOffset(laneIndex);
+        this.currentLateralOffset = this.laneOffset;
+        
+        const hues = [190, 210, 280, 320, 150, 30];
+        this.hue = hues[Math.floor(Math.random() * hues.length)];
+        this.color = `hsl(${this.hue}, 90%, 60%)`;
+
+        this.state = 'driving'; 
+        this.removed = false;
+        
+        this.nextTurn = 'straight'; 
+        this.decideNextTurn();
+        
+        this.blinkerState = 'none'; 
+        this.blinkerTimer = 0;
+
+        // STUCK LOGIC
+        this.stuckTimer = 0;
+        this.beingExtracted = false; 
+        this.opacity = 1.0;
+        this.scale = 1.0;
+    }
+
+    getLaneOffset(index) {
+        return (MARKER_WIDTH/2) + (LANE_WIDTH * ((LANE_COUNT - 1) - index)) + (LANE_WIDTH/2);
+    }
+
+    decideNextTurn() {
+        const r = Math.random();
+        if (this.laneIndex === 0) {
+            if (r < 0.2) this.nextTurn = 'right';
+            else this.nextTurn = 'straight';
+        } else {
+            if (r < 0.2) this.nextTurn = 'left';
+            else this.nextTurn = 'straight';
+        }
+    }
+
+    update(dt, map, cars) {
+        if (this.beingExtracted) return; 
+
+        this.blinkerTimer += dt;
+
+        // Stuck detection
+        if (this.speed < 0.1) {
+            this.stuckTimer += dt;
+        } else {
+            this.stuckTimer = 0;
+        }
+
+        // 1. SENSORS
+        const lookAhead = 100;
+        let carDist = Infinity;   
+        let lightDist = Infinity; 
+        let laneChangeBlocked = false;
+
+        for (let other of cars) {
+            if (other === this) continue;
+            if (other.beingExtracted) continue; 
+
+            if (this.state === 'turning' && this.pos.dist(other.pos) < CAR_LENGTH + 5) {
+            }
+
+            const toOther = other.pos.sub(this.pos);
+            const fwdDist = toOther.x * this.dir.x + toOther.y * this.dir.y;
+            const sideDist = toOther.x * -this.dir.y + toOther.y * this.dir.x; 
+
+            if (fwdDist > 0 && fwdDist < lookAhead) {
+                if (Math.abs(sideDist) < LANE_WIDTH * 0.6) {
+                     if (fwdDist < CAR_LENGTH + 5) {
+                        this.speed = 0; 
+                        carDist = 0;
+                     } else {
+                        carDist = Math.min(carDist, fwdDist - CAR_LENGTH);
+                     }
+                }
+            }
+
+            if (this.state === 'driving' || this.state === 'changing_lane') {
+                if (this.pos.dist(other.pos) < CAR_LENGTH * 2.0) {
+                    laneChangeBlocked = true;
+                }
+            }
+        }
+
+        // Check Intersections
+        let distToInterCenter = Infinity;
+        
+        for (let inter of map.intersections) {
+            const toInter = new Vector(inter.x - this.pos.x, inter.y - this.pos.y);
+            const fwd = toInter.x * this.dir.x + toInter.y * this.dir.y;
+            const side = Math.abs(toInter.x * -this.dir.y + toInter.y * this.dir.x);
+
+            if (fwd > 0 && fwd < lookAhead + 100 && side < ROAD_WIDTH/2) {
+                const stopLineDist = fwd - STOP_LINE_OFFSET;
+                
+                if (fwd < distToInterCenter) distToInterCenter = fwd;
+
+                if (stopLineDist < 100 && stopLineDist > -30 && this.nextTurn !== 'straight') {
+                    this.blinkerState = this.nextTurn;
+                }
+
+                const lightState = inter.light.getState(this.dir.x, this.dir.y);
+                if (stopLineDist > -CAR_LENGTH && stopLineDist < lookAhead) {
+                    if (lightState === 'red' || (lightState === 'yellow' && stopLineDist > 30)) {
+                        lightDist = Math.min(lightDist, stopLineDist);
+                    }
+                }
+
+                if (this.nextTurn !== 'straight' && this.state !== 'turning') {
+                    this.checkTurnTrigger(inter, fwd);
+                }
+            }
+        }
+
+        // 2. LANE CHANGE
+        const blockedByCar = carDist < lookAhead && carDist < lightDist;
+        const notAtIntersection = distToInterCenter > 150; 
+        const hasMomentum = this.speed > 0.5; 
+
+        if (this.state === 'driving' && blockedByCar && notAtIntersection && hasMomentum) {
+            let targetL = -1;
+            if (this.laneIndex === 0) targetL = 1;
+            else if (this.laneIndex === 1) targetL = 0;
+
+            if (targetL !== -1 && !laneChangeBlocked && Math.random() < 0.03) {
+                this.startLaneChange(targetL);
+            }
+        }
+
+        // 3. PHYSICS
+        let obstacleDist = Math.min(carDist, lightDist);
+        let targetSpeed = this.maxSpeed;
+
+        if (obstacleDist < 20) {
+            targetSpeed = 0;
+        } else if (obstacleDist < lookAhead) {
+            targetSpeed = this.maxSpeed * Math.pow(obstacleDist / lookAhead, 1.5);
+        }
+
+        if (this.speed < targetSpeed) this.speed += ACCELERATION * dt;
+        else this.speed -= BRAKING * dt;
+        
+        if (this.speed < 0.05) this.speed = 0;
+
+        // 4. MOVEMENT
+        if (this.state === 'changing_lane') {
+            this.updateLaneChange(dt);
+        } else if (this.state === 'turning') {
+            this.updateTurn(dt);
+        } 
+        
+        this.pos.x += this.dir.x * this.speed * dt;
+        this.pos.y += this.dir.y * this.speed * dt;
+
+        if (this.pos.x < -200 || this.pos.x > map.width + 200 || 
+            this.pos.y < -200 || this.pos.y > map.height + 200) {
+            this.removed = true;
+        }
+    }
+
+    startLaneChange(newIndex) {
+        this.state = 'changing_lane';
+        this.targetLaneIndex = newIndex;
+        this.startLateralOffset = this.currentLateralOffset;
+        this.targetLateralOffset = this.getLaneOffset(newIndex);
+        this.laneChangeProgress = 0;
+        
+        if (newIndex > this.laneIndex) this.blinkerState = 'left'; 
+        else this.blinkerState = 'right';
+    }
+
+    updateLaneChange(dt) {
+        this.laneChangeProgress += 0.03 * dt;
+        if (this.laneChangeProgress >= 1) {
+            this.laneChangeProgress = 1;
+            this.state = 'driving';
+            this.laneIndex = this.targetLaneIndex;
+            this.blinkerState = 'none';
+        }
+
+        const t = this.laneChangeProgress;
+        const smoothT = t * t * (3 - 2 * t);
+        const currentOffset = this.startLateralOffset + (this.targetLateralOffset - this.startLateralOffset) * smoothT;
+        
+        const deltaOffset = currentOffset - this.currentLateralOffset;
+        this.currentLateralOffset = currentOffset;
+
+        const perpX = -this.dir.y; 
+        const perpY = this.dir.x;
+        
+        this.pos.x += perpX * deltaOffset;
+        this.pos.y += perpY * deltaOffset;
+    }
+
+    checkTurnTrigger(inter, fwdDistToCenter) {
+        const laneOffset = this.getLaneOffset(this.laneIndex);
+        let triggerDist = 0;
+
+        if (this.nextTurn === 'right') triggerDist = ROAD_WIDTH / 2;
+        else triggerDist = laneOffset;
+
+        if (Math.abs(fwdDistToCenter - triggerDist) < 8) {
+            this.initiateTurn(inter);
+        }
+    }
+
+    initiateTurn(inter) {
+        this.state = 'turning';
+        const turnDir = (this.nextTurn === 'right') ? 1 : -1;
+        
+        this.turnStartDir = this.dir.copy();
+        if (turnDir === 1) this.turnTargetDir = new Vector(-this.dir.y, this.dir.x);
+        else this.turnTargetDir = new Vector(this.dir.y, -this.dir.x);
+
+        const laneOffset = this.getLaneOffset(this.laneIndex);
+
+        if (turnDir === 1) this.turnRadius = (ROAD_WIDTH/2) - laneOffset;
+        else this.turnRadius = laneOffset * 2;
+
+        const perpX = -this.dir.y; 
+        const perpY = this.dir.x;
+        const fwdX = this.dir.x;
+        const fwdY = this.dir.y;
+
+        let pivotOffsetX = 0;
+        let pivotOffsetY = 0;
+
+        if (turnDir === 1) {
+            const cornerDist = ROAD_WIDTH/2;
+            pivotOffsetX = (perpX * cornerDist) - (fwdX * cornerDist);
+            pivotOffsetY = (perpY * cornerDist) - (fwdY * cornerDist);
+        } else {
+            const pDist = laneOffset;
+            pivotOffsetX = (-perpX * pDist) + (fwdX * pDist);
+            pivotOffsetY = (-perpY * pDist) + (fwdY * pDist);
+        }
+
+        this.turnCenter = new Vector(inter.x + pivotOffsetX, inter.y + pivotOffsetY);
+        this.turnProgress = 0;
+    }
+
+    updateTurn(dt) {
+        this.turnProgress += (this.speed * dt) / (this.turnRadius * 1.6); 
+        
+        if (this.turnProgress >= 1) {
+            this.state = 'driving';
+            this.dir = this.turnTargetDir;
+            this.blinkerState = 'none';
+            this.decideNextTurn(); 
+        } else {
+            const angleStep = (Math.PI/2) * (this.nextTurn === 'right' ? 1 : -1) * dt * (this.speed / (this.turnRadius * 1.6)) * 0.65; 
+            const cos = Math.cos(angleStep);
+            const sin = Math.sin(angleStep);
+            const newX = this.dir.x * cos - this.dir.y * sin;
+            const newY = this.dir.x * sin + this.dir.y * cos;
+            this.dir = new Vector(newX, newY).normalize();
+            
+            const vToCar = this.pos.sub(this.turnCenter);
+            const currentDist = vToCar.mag();
+            if (Math.abs(currentDist - this.turnRadius) > 1) {
+                const corrected = vToCar.normalize().mult(this.turnRadius);
+                this.pos = this.turnCenter.add(corrected);
+            }
+        }
+    }
+
+    draw(ctx, debug) {
+        ctx.save();
+        ctx.translate(this.pos.x, this.pos.y);
+        ctx.scale(this.scale, this.scale); // For extraction effect
+        ctx.globalAlpha = this.opacity;
+        ctx.rotate(Math.atan2(this.dir.y, this.dir.x));
+
+        // Shadow
+        ctx.fillStyle = 'rgba(0,0,0,0.5)';
+        ctx.fillRect(-CAR_LENGTH/2 + 2, -CAR_WIDTH/2 + 2, CAR_LENGTH, CAR_WIDTH);
+
+        // Body
+        ctx.fillStyle = this.color;
+        ctx.shadowColor = this.color;
+        ctx.shadowBlur = 15;
+        drawRoundedRect(ctx, -CAR_LENGTH/2, -CAR_WIDTH/2, CAR_LENGTH, CAR_WIDTH, 3);
+        
+        // Cabin
+        ctx.fillStyle = '#0f172a';
+        ctx.shadowBlur = 0;
+        drawRoundedRect(ctx, -CAR_LENGTH/4, -CAR_WIDTH/2 + 2, CAR_LENGTH/2, CAR_WIDTH - 4, 2);
+
+        // Headlights
+        ctx.fillStyle = '#cbd5e1';
+        ctx.shadowColor = '#fff';
+        ctx.shadowBlur = 10;
+        ctx.fillRect(CAR_LENGTH/2 - 2, -CAR_WIDTH/2 + 1, 2, 3);
+        ctx.fillRect(CAR_LENGTH/2 - 2, CAR_WIDTH/2 - 4, 2, 3);
+
+        // Brake Lights
+        if (this.speed < this.maxSpeed * 0.9) {
+            ctx.fillStyle = '#ef4444';
+            ctx.shadowColor = '#f87171';
+            ctx.shadowBlur = 15;
+            ctx.fillRect(-CAR_LENGTH/2, -CAR_WIDTH/2 + 1, 2, 3);
+            ctx.fillRect(-CAR_LENGTH/2, CAR_WIDTH/2 - 4, 2, 3);
+        }
+
+        // Blinkers
+        if (this.blinkerState !== 'none') {
+            if (Math.floor(Date.now() / 300) % 2 === 0) {
+                ctx.fillStyle = '#fbbf24';
+                ctx.shadowColor = '#fbbf24';
+                ctx.shadowBlur = 10;
+                const yOffset = (this.blinkerState === 'left') ? -CAR_WIDTH/2 : CAR_WIDTH/2 - 3;
+                ctx.fillRect(CAR_LENGTH/2 - 2, yOffset, 2, 3); 
+                ctx.fillRect(-CAR_LENGTH/2, yOffset, 2, 3); 
+            }
+        }
+        ctx.restore();
+        
+        // Stuck Icon
+        if (this.stuckTimer > STUCK_THRESHOLD) {
+            ctx.fillStyle = 'red';
+            ctx.font = 'bold 14px Arial';
+            ctx.fillText('!', this.pos.x - 3, this.pos.y - 15);
+        }
+    }
+}
+
+class TrafficDrone {
+    constructor(targetCar) {
+        this.targetCar = targetCar;
+        this.pos = new Vector(targetCar.pos.x + (Math.random()-0.5)*500, targetCar.pos.y - 500); // Spawn away
+        this.speed = 8;
+        this.state = 'seeking'; // seeking, locking, extracting, returning
+        this.timer = 0;
+        this.beamAlpha = 0;
+        this.color = '#f97316'; // Orange
+        this.propAngle = 0;
+    }
+    
+    update(dt) {
+        this.propAngle += 1.5;
+        
+        if (this.state === 'seeking') {
+            const toTarget = this.targetCar.pos.sub(this.pos);
+            const dist = toTarget.mag();
+            if (dist < 10) {
+                this.state = 'locking';
+                this.targetCar.beingExtracted = true;
+            } else {
+                this.pos = this.pos.add(toTarget.normalize().mult(this.speed * dt));
+            }
+        } else if (this.state === 'locking') {
+            this.pos = this.targetCar.pos.copy(); // Follow car if it jitters
+            this.timer += dt;
+            this.beamAlpha = Math.min(1, this.timer / 30);
+            if (this.timer > 40) {
+                this.state = 'extracting';
+                this.timer = 0;
+            }
+        } else if (this.state === 'extracting') {
+            this.timer += dt;
+            // Lift Car
+            this.targetCar.scale = 1 + (this.timer/50);
+            this.targetCar.opacity = 1 - (this.timer/60);
+            // Spin car slightly?
+            
+            if (this.timer > 60) {
+                this.targetCar.removed = true;
+                this.state = 'returning';
+            }
+        } else if (this.state === 'returning') {
+            this.pos.y -= this.speed * dt;
+            this.beamAlpha -= 0.1;
+            if (this.pos.y < -500) {
+                // Done
+                return true; // Remove drone
+            }
+        }
+        return false;
+    }
+
+    draw(ctx) {
+        // Draw Beam
+        if (this.beamAlpha > 0) {
+            ctx.save();
+            ctx.translate(this.pos.x, this.pos.y);
+            ctx.fillStyle = `rgba(56, 189, 248, ${this.beamAlpha * 0.4})`;
+            ctx.beginPath();
+            ctx.moveTo(-10, 0);
+            ctx.lineTo(10, 0);
+            ctx.lineTo(CAR_WIDTH * 1.5, 40); // Cone down to car
+            ctx.lineTo(-CAR_WIDTH * 1.5, 40);
+            ctx.fill();
+            
+            // Laser line
+            ctx.strokeStyle = `rgba(255, 255, 255, ${this.beamAlpha})`;
+            ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(0, 30); ctx.stroke();
+            ctx.restore();
+        }
+
+        // Draw Drone Body
+        ctx.save();
+        ctx.translate(this.pos.x, this.pos.y);
+        
+        // Shadow (if low)
+        if (this.state !== 'returning') {
+            ctx.fillStyle = 'rgba(0,0,0,0.3)';
+            ctx.beginPath(); ctx.ellipse(0, 40, 15, 8, 0, 0, Math.PI*2); ctx.fill();
+        }
+
+        // Body
+        ctx.fillStyle = this.color;
+        ctx.shadowColor = this.color;
+        ctx.shadowBlur = 10;
+        ctx.beginPath(); ctx.arc(0, 0, 8, 0, Math.PI*2); ctx.fill();
+        
+        // Props
+        ctx.strokeStyle = '#555';
+        ctx.lineWidth = 2;
+        const armLen = 12;
+        ctx.beginPath(); 
+        ctx.moveTo(-armLen, -armLen); ctx.lineTo(armLen, armLen);
+        ctx.moveTo(armLen, -armLen); ctx.lineTo(-armLen, armLen);
+        ctx.stroke();
+
+        // Spinning Blades
+        ctx.fillStyle = 'rgba(255,255,255,0.5)';
+        const bladeSize = 8;
+        const drawBlade = (cx, cy) => {
+            ctx.beginPath(); ctx.arc(cx, cy, bladeSize, this.propAngle, this.propAngle + Math.PI); ctx.fill();
+            ctx.beginPath(); ctx.arc(cx, cy, bladeSize, this.propAngle + Math.PI/2, this.propAngle + Math.PI*1.5); ctx.fill();
+        };
+        drawBlade(-armLen, -armLen);
+        drawBlade(armLen, armLen);
+        drawBlade(armLen, -armLen);
+        drawBlade(-armLen, armLen);
+
+        ctx.restore();
+    }
+}
+
+class CityMap {
+    constructor(width, height) {
+        this.width = width;
+        this.height = height;
+        this.intersections = [];
+        this.generate();
+    }
+
+    generate() {
+        this.intersections = [];
+        const cols = Math.ceil(this.width / 300);
+        const rows = Math.ceil(this.height / 300);
+        const xSpacing = this.width / cols;
+        const ySpacing = this.height / rows;
+
+        for (let i = 1; i < cols; i++) {
+            for (let j = 1; j < rows; j++) {
+                this.intersections.push({
+                    x: i * xSpacing,
+                    y: j * ySpacing,
+                    light: new TrafficLight(i * xSpacing, j * ySpacing)
+                });
+            }
+        }
+        
+        this.spawnPoints = [];
+        for (let i = 1; i < cols; i++) {
+            const roadX = i * xSpacing;
+            const offset0 = (MARKER_WIDTH/2) + LANE_WIDTH * 1.5; 
+            const offset1 = (MARKER_WIDTH/2) + LANE_WIDTH * 0.5; 
+            
+            this.spawnPoints.push({x: roadX - offset0, y: -60, dx: 0, dy: 1, lane: 0});
+            this.spawnPoints.push({x: roadX - offset1, y: -60, dx: 0, dy: 1, lane: 1});
+            
+            this.spawnPoints.push({x: roadX + offset0, y: this.height + 60, dx: 0, dy: -1, lane: 0});
+            this.spawnPoints.push({x: roadX + offset1, y: this.height + 60, dx: 0, dy: -1, lane: 1});
+        }
+        
+        for (let j = 1; j < rows; j++) {
+            const roadY = j * ySpacing;
+            const offset0 = (MARKER_WIDTH/2) + LANE_WIDTH * 1.5;
+            const offset1 = (MARKER_WIDTH/2) + LANE_WIDTH * 0.5;
+
+            this.spawnPoints.push({x: -60, y: roadY + offset0, dx: 1, dy: 0, lane: 0});
+            this.spawnPoints.push({x: -60, y: roadY + offset1, dx: 1, dy: 0, lane: 1});
+            
+            this.spawnPoints.push({x: this.width + 60, y: roadY - offset0, dx: -1, dy: 0, lane: 0});
+            this.spawnPoints.push({x: this.width + 60, y: roadY - offset1, dx: -1, dy: 0, lane: 1});
+        }
+    }
+
+    draw(ctx) {
+        const cols = Math.ceil(this.width / 300);
+        const rows = Math.ceil(this.height / 300);
+        const xSpacing = this.width / cols;
+        const ySpacing = this.height / rows;
+
+        for (let i = 1; i < cols; i++) {
+            const x = i * xSpacing;
+            ctx.fillStyle = COLORS.road;
+            ctx.fillRect(x - ROAD_WIDTH/2, 0, ROAD_WIDTH, this.height);
+            this.drawRoadMarkings(ctx, x, 0, x, this.height, true);
+        }
+
+        for (let j = 1; j < rows; j++) {
+            const y = j * ySpacing;
+            ctx.fillStyle = COLORS.road;
+            ctx.fillRect(0, y - ROAD_WIDTH/2, this.width, ROAD_WIDTH);
+            this.drawRoadMarkings(ctx, 0, y, this.width, y, false);
+        }
+
+        this.intersections.forEach(inter => {
+            ctx.fillStyle = COLORS.intersection;
+            ctx.fillRect(inter.x - ROAD_WIDTH/2, inter.y - ROAD_WIDTH/2, ROAD_WIDTH, ROAD_WIDTH);
+            
+            ctx.fillStyle = COLORS.roadMarking;
+            const stopDist = STOP_LINE_OFFSET;
+            const laneSpan = LANE_WIDTH * LANE_COUNT;
+            
+            ctx.fillRect(inter.x - laneSpan, inter.y - stopDist, laneSpan, 4);
+            ctx.fillRect(inter.x, inter.y + stopDist, laneSpan, 4);
+            ctx.fillRect(inter.x - stopDist, inter.y, 4, laneSpan);
+            ctx.fillRect(inter.x + stopDist, inter.y - laneSpan, 4, laneSpan);
+
+            this.drawLights(ctx, inter);
+        });
+    }
+
+    drawRoadMarkings(ctx, x1, y1, x2, y2, isVertical) {
+        ctx.save();
+        ctx.strokeStyle = COLORS.roadCenter;
+        ctx.lineWidth = 2;
+        
+        ctx.beginPath();
+        if (isVertical) {
+            ctx.moveTo(x1 - 2, y1); ctx.lineTo(x2 - 2, y2);
+            ctx.moveTo(x1 + 2, y1); ctx.lineTo(x2 + 2, y2);
+        } else {
+            ctx.moveTo(x1, y1 - 2); ctx.lineTo(x2, y2 - 2);
+            ctx.moveTo(x1, y1 + 2); ctx.lineTo(x2, y2 + 2);
+        }
+        ctx.stroke();
+
+        ctx.strokeStyle = COLORS.roadMarking;
+        ctx.setLineDash([20, 20]);
+        ctx.lineWidth = 2;
+        
+        const offset = (MARKER_WIDTH/2) + LANE_WIDTH;
+        
+        ctx.beginPath();
+        if (isVertical) {
+            ctx.moveTo(x1 - offset, y1); ctx.lineTo(x2 - offset, y2);
+            ctx.moveTo(x1 + offset, y1); ctx.lineTo(x2 + offset, y2);
+        } else {
+            ctx.moveTo(x1, y1 - offset); ctx.lineTo(x2, y2 - offset);
+            ctx.moveTo(x1, y1 + offset); ctx.lineTo(x2, y2 + offset);
+        }
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    drawLights(ctx, inter) {
+        const nsColor = (inter.light.phase === 0) ? '#10b981' : (inter.light.phase === 1 ? '#f59e0b' : '#ef4444'); 
+        const ewColor = (inter.light.phase === 2) ? '#10b981' : (inter.light.phase === 3 ? '#f59e0b' : '#ef4444');
+
+        const stopDist = STOP_LINE_OFFSET;
+        
+        ctx.save();
+        ctx.strokeStyle = '#334155';
+        ctx.lineWidth = 4;
+        
+        ctx.beginPath(); ctx.moveTo(inter.x - ROAD_WIDTH/2, inter.y - stopDist); ctx.lineTo(inter.x, inter.y - stopDist); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(inter.x, inter.y + stopDist); ctx.lineTo(inter.x + ROAD_WIDTH/2, inter.y + stopDist); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(inter.x - stopDist, inter.y); ctx.lineTo(inter.x - stopDist, inter.y + ROAD_WIDTH/2); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(inter.x + stopDist, inter.y - ROAD_WIDTH/2); ctx.lineTo(inter.x + stopDist, inter.y); ctx.stroke();
+        
+        const drawBulb = (x, y, color) => {
+            ctx.fillStyle = '#000';
+            ctx.beginPath(); ctx.arc(x, y, 6, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = color;
+            ctx.shadowColor = color;
+            ctx.shadowBlur = 15;
+            ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI*2); ctx.fill();
+            ctx.shadowBlur = 0;
+        };
+
+        const laneCenter = (ROAD_WIDTH/2) / 2; 
+        
+        drawBulb(inter.x - laneCenter, inter.y - stopDist, nsColor); 
+        drawBulb(inter.x + laneCenter, inter.y + stopDist, nsColor); 
+        drawBulb(inter.x - stopDist, inter.y + laneCenter, ewColor); 
+        drawBulb(inter.x + stopDist, inter.y - laneCenter, ewColor); 
+
+        ctx.restore();
+    }
+}
+
+/**
+ * MAIN LOOP
+ */
+const canvas = document.getElementById('simCanvas');
+const ctx = canvas.getContext('2d');
+let map, cars = [], drones = [];
+let lastTime = 0, spawnTimer = 0;
+let simSpeed = 1.0, spawnRate = 60, debugMode = false;
+
+function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    map = new CityMap(canvas.width, canvas.height);
+    cars = [];
+    drones = [];
+}
+
+function loop(timestamp) {
+    const dtRaw = timestamp - lastTime;
+    lastTime = timestamp;
+    const dt = (dtRaw / 16) * simSpeed;
+
+    map.intersections.forEach(i => i.light.update(dtRaw * simSpeed / 10));
+
+    spawnTimer += dt;
+    if (spawnTimer > spawnRate) {
+        spawnTimer = 0;
+        if (cars.length < 200) {
+            const pt = map.spawnPoints[Math.floor(Math.random() * map.spawnPoints.length)];
+            let clear = true;
+            for (let c of cars) {
+                if (c.pos.dist(new Vector(pt.x, pt.y)) < 80) { clear = false; break; }
+            }
+            if (clear) cars.push(new Car(pt.x, pt.y, pt.dx, pt.dy, pt.lane));
+        }
+    }
+
+    // Dispatch Drones
+    if (drones.length < 3) {
+        // Find most stuck car that isn't already targeted
+        const stuckCar = cars.find(c => c.stuckTimer > STUCK_THRESHOLD && !c.beingExtracted);
+        if (stuckCar) {
+            drones.push(new TrafficDrone(stuckCar));
+        }
+    }
+
+    // Update Drones
+    drones = drones.filter(d => !d.update(dt));
+
+    cars.forEach(c => c.update(dt, map, cars));
+    cars = cars.filter(c => !c.removed);
+
+    ctx.fillStyle = COLORS.bg;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    map.draw(ctx);
+    cars.forEach(c => c.draw(ctx, debugMode));
+    drones.forEach(d => d.draw(ctx));
+
+    if (Math.floor(timestamp/200) % 5 === 0) {
+        document.getElementById('car-count').innerText = cars.length;
+        document.getElementById('drone-count').innerText = drones.length;
+    }
+
+    requestAnimationFrame(loop);
+}
+
+// UI Toggle Logic
+const controlsPanel = document.getElementById('controls');
+const openUiBtn = document.getElementById('open-ui-btn');
+const closeUiBtn = document.getElementById('close-ui-btn');
+
+closeUiBtn.addEventListener('click', () => {
+    controlsPanel.classList.add('opacity-0', 'pointer-events-none', 'scale-95');
+    openUiBtn.classList.remove('opacity-0', 'pointer-events-none', 'scale-90');
+});
+
+openUiBtn.addEventListener('click', () => {
+    controlsPanel.classList.remove('opacity-0', 'pointer-events-none', 'scale-95');
+    openUiBtn.classList.add('opacity-0', 'pointer-events-none', 'scale-90');
+});
+
+
+document.getElementById('sim-speed').addEventListener('input', e => {
+    simSpeed = parseFloat(e.target.value);
+    document.getElementById('speed-val').innerText = simSpeed + "x";
+});
+document.getElementById('spawn-rate').addEventListener('input', e => {
+    const v = parseInt(e.target.value);
+    spawnRate = 210 - v;
+    const labels = v > 140 ? "High" : (v < 60 ? "Low" : "Normal");
+    document.getElementById('spawn-val').innerText = labels;
+});
+document.getElementById('debug-mode').addEventListener('change', e => debugMode = e.target.checked);
+document.getElementById('reset-btn').addEventListener('click', resize);
+document.getElementById('clear-traffic-btn').addEventListener('click', () => cars = []);
+
+resize();
+window.addEventListener('resize', resize);
+requestAnimationFrame(loop);
+
+</script>
+</body>
+</html>
